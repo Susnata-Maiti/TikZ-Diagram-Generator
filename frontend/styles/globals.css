@@ -1,0 +1,18 @@
+/* Global reset and base styles */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #__next {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+  background: #ffffff;
+  color: #1f2328;
+}
+
+a { color: #3b82d4; }
