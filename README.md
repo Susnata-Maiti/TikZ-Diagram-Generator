@@ -6,8 +6,18 @@ into accurate, publication-quality LaTeX/TikZ diagrams with deterministic layout
 
 ---
 
+## 🌐 Live Deployments
+
+| Service | Platform | Live URL |
+| :--- | :--- | :--- |
+| **Frontend Application** | Vercel | [https://tik-z-diagram-generator.vercel.app](https://tik-z-diagram-generator.vercel.app) |
+| **Backend API & Compiler** | Render | [https://tikz-generator-backend.onrender.com](https://tikz-generator-backend.onrender.com) |
+
+---
+
 ## Table of Contents
 
+0. [Live Deployments](#-live-deployments)
 1. [Project Architecture](#1-project-architecture)
 2. [Supported Diagram Types](#2-supported-diagram-types)
 3. [Diagram Convention Engine](#3-diagram-convention-engine)
@@ -415,33 +425,35 @@ python -m pytest backend/tests/ -v
 
 ## 12. Vercel Deployment
 
-The **Next.js frontend** deploys to Vercel.
+The **Next.js frontend** is deployed to Vercel:
+- **Live URL:** [https://tik-z-diagram-generator.vercel.app](https://tik-z-diagram-generator.vercel.app)
 
 The backend and LaTeX compilation **cannot** run on Vercel serverless functions due to
-execution time limits and the inability to install TeX Live. Use a separately hosted worker
-(see section 13) and point the frontend's rewrite rules at it.
+execution time limits and the inability to install TeX Live. It connects to the Render backend worker
+(see section 13) via the configured backend URL.
 
 ```bash
-# Set these in Vercel environment variables:
-NEXT_PUBLIC_BACKEND_URL=https://your-worker.example.com
+# Configured in Vercel environment variables:
+NEXT_PUBLIC_BACKEND_URL=https://tikz-generator-backend.onrender.com
 NEXT_PUBLIC_ACCESS_TOKEN=your-optional-token
-
-# Edit vercel.json:
-# Replace BACKEND_WORKER_URL with your actual worker URL
 ```
 
 Deployment steps:
 1. Fork / clone this repository.
 2. Import the project in Vercel, set root directory to `frontend/`.
-3. Add the environment variables above.
+3. Add `NEXT_PUBLIC_BACKEND_URL` pointing to the Render backend service.
 4. Deploy.
 
 ---
 
 ## 13. Worker Deployment
 
-The backend worker handles all computationally intensive operations.
-It can be deployed anywhere Docker is supported (Fly.io, Railway, AWS ECS, GCP Cloud Run, etc.).
+The backend worker handles all computationally intensive operations (FastAPI, IBM Granite LLM reasoning, deterministic layout engine, and TeX Live `pdflatex` compilation).
+- **Live Backend (Render):** [https://tikz-generator-backend.onrender.com](https://tikz-generator-backend.onrender.com)
+- **API Documentation (Swagger UI):** [https://tikz-generator-backend.onrender.com/docs](https://tikz-generator-backend.onrender.com/docs)
+- **Health Check Endpoint:** [https://tikz-generator-backend.onrender.com/health](https://tikz-generator-backend.onrender.com/health)
+
+It can be deployed to **Render**, **Railway**, **Fly.io**, **AWS ECS**, **GCP Cloud Run**, or run locally with Docker:
 
 ```bash
 cd tikz-diagram-generator/worker
