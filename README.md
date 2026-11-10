@@ -358,7 +358,25 @@ The pipeline never claims validation passed unless the checks were actually perf
 - TeX Live (or MiKTeX) with `pdflatex` on `PATH`
 - IBM watsonx.ai account with API key and project ID
 
-### Backend
+### One-Command Quick Start (Both Frontend & Backend)
+
+Activate both the backend and frontend simultaneously in a single terminal:
+
+```bash
+python run.py
+```
+
+This unified launcher automatically:
+- Starts the FastAPI backend at `http://localhost:8000` (Docs: `http://localhost:8000/docs`).
+- Starts the Next.js frontend at `http://localhost:3000`.
+- Streams colored, labeled logs (`[BACKEND]` and `[FRONTEND]`) to your console.
+- Gracefully shuts down both processes and their child process trees on `Ctrl+C`.
+
+---
+
+### Manual Setup (Separate Terminals)
+
+#### Backend
 
 ```bash
 cd tikz-diagram-generator/backend

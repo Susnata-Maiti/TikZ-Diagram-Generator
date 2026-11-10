@@ -97,15 +97,18 @@ Color values: blue | green | orange | purple | gray | red | teal | yellow | whit
 
 CRITICAL RULES:
 1. Assign unique alphanumeric IDs: n1, n2, n3 … for nodes; g1, g2 … for groups.
-2. Keep node labels concise, clean and legible (1-5 words per node, under 40 chars). Keep edge labels under 25 chars.
-3. For architectures, microservices, cloud, networks, pipelines, and workflows: organize components into logical containers/groups (e.g. "Frontend Tier", "API Gateway", "Core Services", "Database Layer") and assign distinct vibrant colors ("blue", "purple", "teal", "orange", "red", "green"). Assign every related node to its group id!
-4. For quantum circuits: set category to "quantum_circuit". Set qubit_index (0-based wire: 0 for q0, 1 for q1, ...) and gate_column (0-based time slice: 0, 1, 2, ...). Use standard gate names: "H", "X", "Y", "Z", "S", "T", "CNOT", "Measurement", "Barrier". For CNOT/CX: create control on qubit_index, target on target qubit_index, same gate_column, and add an edge from control to target.
-5. For UML class diagrams, populate uml_attributes and uml_operations arrays.
-6. For flowcharts: terminators for start/end, process rectangles, diamond decisions, io_box for I/O.
-7. For ERDs: use the specified notation (chen_erd or crows_foot) and mark relationship types.
-8. For electrical/digital circuits: use shape "rectangle" with stereotype for component type.
-9. Use "orthogonal_up"/"orthogonal_down" only for skip-connections or feedback loops.
-10. Return ONLY the JSON object.
+2. Keep node labels concise, clean and legible (1-4 words per node, under 30 chars). Never put multi-sentence paragraphs into a node label. Keep edge labels under 20 chars.
+3. Choose layout direction wisely to prevent cramped layouts:
+   - Use "LR" (left-to-right) for multi-tier architectures, microservices, cloud deployments, ML/data pipelines, and quantum circuits.
+   - Use "TB" (top-to-bottom) for hierarchical decision trees, organizational breakdowns, and deep procedural flowcharts.
+4. For architectures, microservices, cloud, networks, pipelines, and workflows: organize components into logical containers/groups (e.g. "Frontend Tier", "API Gateway", "Core Services", "Database Layer") and assign distinct vibrant colors ("blue", "purple", "teal", "orange", "red", "green"). Assign every related node to its group id! Groups should represent clean sequential tiers or parallel subsystems so containers never entangle.
+5. For quantum circuits: set category to "quantum_circuit". Set qubit_index (0-based wire: 0 for q0, 1 for q1, ...) and gate_column (0-based time slice: 0, 1, 2, ...). Every gate on the same wire must have a distinct gate_column. Use standard gate names: "H", "X", "Y", "Z", "S", "T", "CNOT", "Measurement", "Barrier". For CNOT/CX: create control on qubit_index, target on target qubit_index, same gate_column, and add an edge from control to target.
+6. For UML class diagrams, populate uml_attributes and uml_operations arrays with clean, typed members.
+7. For flowcharts: terminators for start/end, process rectangles, diamond decisions, io_box for I/O.
+8. For ERDs: use the specified notation (chen_erd or crows_foot) and mark relationship types.
+9. For electrical/digital circuits: use shape "rectangle" with stereotype for component type.
+10. Use "orthogonal" or "curved" for skip-connections, feedback loops, or back-edges to ensure clean routing corridors with zero entity collision.
+11. Return ONLY the JSON object.
 """
 
 _REFINE_SYSTEM_PROMPT = r"""You are an intelligent Graph State Agent for a TikZ diagram generator.

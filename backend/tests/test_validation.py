@@ -74,6 +74,61 @@ def test_geometry_validation_detects_overlap():
     assert any("n1" in w or "n2" in w for w in result.warnings)
 
 
+def test_geometry_validation_detects_group_overlap():
+    from backend.ir.schema import NodeGeometry
+    pipeline = ValidationPipeline()
+    g1 = IRGroup(id="g1", label="Tier 1", geometry=NodeGeometry(x=0.0, y=0.0, width=4.0, height=4.0))
+    g2 = IRGroup(id="g2", label="Tier 2", geometry=NodeGeometry(x=2.0, y=2.0, width=4.0, height=4.0))
+    ir = DiagramIR(groups=[g1, g2])
+    result = pipeline.validate_geometry(ir)
+    assert any("g1" in w and "g2" in w for w in result.warnings)
+
+
+def test_geometry_validation_detects_foreign_node_in_group():
+    from backend.ir.schema import NodeGeometry
+    pipeline = ValidationPipeline()
+    g1 = IRGroup(id="g1", label="Tier 1", geometry=NodeGeometry(x=0.0, y=0.0, width=5.0, height=5.0))
+    # Foreign node sitting inside group g1's bounding box
+    n1 = IRNode(id="foreign1", label="Alien", group=None, geometry=NodeGeometry(x=2.5, y=2.5, width=1.0, height=1.0))
+    ir = DiagramIR(groups=[g1], nodes=[n1])
+    result = pipeline.validate_geometry(ir)
+    assert any("foreign1" in w and "g1" in w for w in result.warnings)
+
+
+def test_complex_architecture_layout_passes_all_geometry_validation():
+    """A realistic multi-tier system with groups and connections must pass all geometry checks without warning."""
+    g1 = IRGroup(id="g_client", label="Client Layer")
+    g2 = IRGroup(id="g_api", label="Gateway Layer")
+    g3 = IRGroup(id="g_data", label="Data Storage")
+
+    n1 = IRNode(id="n_web", label="Web App", group="g_client")
+    n2 = IRNode(id="n_mobile", label="Mobile App", group="g_client")
+    n3 = IRNode(id="n_gw", label="Kong API Gateway", group="g_api")
+    n4 = IRNode(id="n_auth", label="Auth Service", group="g_api")
+    n5 = IRNode(id="n_pg", label="PostgreSQL Primary", shape=NodeShape.CYLINDER, group="g_data")
+    n6 = IRNode(id="n_redis", label="Redis Cache Cluster", shape=NodeShape.CYLINDER, group="g_data")
+
+    edges = [
+        IREdge(**{"from": "n_web", "to": "n_gw"}),
+        IREdge(**{"from": "n_mobile", "to": "n_gw"}),
+        IREdge(**{"from": "n_gw", "to": "n_auth"}),
+        IREdge(**{"from": "n_auth", "to": "n_redis"}),
+        IREdge(**{"from": "n_auth", "to": "n_pg"}),
+    ]
+
+    ir = DiagramIR(
+        category=DiagramCategory.ARCHITECTURE,
+        direction=Direction.LR,
+        groups=[g1, g2, g3],
+        nodes=[n1, n2, n3, n4, n5, n6],
+        edges=edges,
+    )
+    ir = run_layout(ir)
+    pipeline = ValidationPipeline()
+    report = pipeline.validate_geometry(ir)
+    assert len(report.warnings) == 0, f"Expected 0 geometry warnings, got: {report.warnings}"
+
+
 def test_layout_resolves_overlaps():
     """After running the layout engine, same-layer nodes must not overlap."""
     nodes = [IRNode(id=f"n{i}", label=f"Node {i}") for i in range(5)]

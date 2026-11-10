@@ -134,17 +134,18 @@ class ValidationPipeline:
         errors: list[str] = []
         warnings: list[str] = []
 
-        # Check for overlapping node bounding boxes
+        # 1. Check for overlapping node bounding boxes (exact center-based coords)
         for i, na in enumerate(ir.nodes):
             for nb in ir.nodes[i + 1:]:
-                ax1 = na.geometry.x
-                ax2 = na.geometry.x + na.geometry.width
-                ay1 = na.geometry.y - na.geometry.height / 2
-                ay2 = na.geometry.y + na.geometry.height / 2
-                bx1 = nb.geometry.x
-                bx2 = nb.geometry.x + nb.geometry.width
-                by1 = nb.geometry.y - nb.geometry.height / 2
-                by2 = nb.geometry.y + nb.geometry.height / 2
+                ax1 = na.geometry.x - na.geometry.width / 2.0
+                ax2 = na.geometry.x + na.geometry.width / 2.0
+                ay1 = na.geometry.y - na.geometry.height / 2.0
+                ay2 = na.geometry.y + na.geometry.height / 2.0
+
+                bx1 = nb.geometry.x - nb.geometry.width / 2.0
+                bx2 = nb.geometry.x + nb.geometry.width / 2.0
+                by1 = nb.geometry.y - nb.geometry.height / 2.0
+                by2 = nb.geometry.y + nb.geometry.height / 2.0
 
                 x_overlap = ax1 < bx2 and ax2 > bx1
                 y_overlap = ay1 < by2 and ay2 > by1
@@ -152,6 +153,41 @@ class ValidationPipeline:
                     warnings.append(
                         f"Nodes '{na.id}' and '{nb.id}' bounding boxes overlap."
                     )
+
+        # 2. Check for overlapping group containers
+        for i, ga in enumerate(ir.groups):
+            for gb in ir.groups[i + 1:]:
+                gax1 = ga.geometry.x
+                gax2 = ga.geometry.x + ga.geometry.width
+                gay1 = ga.geometry.y
+                gay2 = ga.geometry.y + ga.geometry.height
+
+                gbx1 = gb.geometry.x
+                gbx2 = gb.geometry.x + gb.geometry.width
+                gby1 = gb.geometry.y
+                gby2 = gb.geometry.y + gb.geometry.height
+
+                if gax1 < gbx2 and gax2 > gbx1 and gay1 < gby2 and gay2 > gby1:
+                    warnings.append(
+                        f"Groups '{ga.id}' and '{gb.id}' bounding boxes overlap."
+                    )
+
+        # 3. Check for foreign nodes inside group containers
+        for g in ir.groups:
+            gx1 = g.geometry.x
+            gx2 = g.geometry.x + g.geometry.width
+            gy1 = g.geometry.y
+            gy2 = g.geometry.y + g.geometry.height
+            for n in ir.nodes:
+                if n.group != g.id:
+                    nx1 = n.geometry.x - n.geometry.width / 2.0
+                    nx2 = n.geometry.x + n.geometry.width / 2.0
+                    ny1 = n.geometry.y - n.geometry.height / 2.0
+                    ny2 = n.geometry.y + n.geometry.height / 2.0
+                    if gx1 < nx2 and gx2 > nx1 and gy1 < ny2 and gy2 > ny1:
+                        warnings.append(
+                            f"Foreign node '{n.id}' overlaps group container '{g.id}'."
+                        )
 
         return ValidationResult(
             passed=len(errors) == 0,

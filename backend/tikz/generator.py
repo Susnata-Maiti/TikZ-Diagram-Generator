@@ -143,25 +143,25 @@ def _edge_arrow_spec(edge: IREdge) -> str:
 # ── Shape style name lookup ───────────────────────────────────────────────────
 
 _SHAPE_TO_STYLE: dict[NodeShape, str] = {
-    NodeShape.RECTANGLE:    "gen_rect",
-    NodeShape.ROUNDED:      "gen_round",
-    NodeShape.DIAMOND:      "gen_diamond",
-    NodeShape.CYLINDER:     "gen_cylinder",
-    NodeShape.CIRCLE:       "gen_circle",
-    NodeShape.ELLIPSE:      "gen_ellipse",
+    NodeShape.RECTANGLE:     "gen_rect",
+    NodeShape.ROUNDED:       "gen_round",
+    NodeShape.DIAMOND:       "gen_diamond",
+    NodeShape.CYLINDER:      "gen_cylinder",
+    NodeShape.CIRCLE:        "gen_circle",
+    NodeShape.ELLIPSE:       "gen_ellipse",
     NodeShape.PARALLELOGRAM: "gen_para",
-    NodeShape.DOUBLE_RECT:  "gen_double_rect",
-    NodeShape.ACTOR:        "gen_actor",
-    NodeShape.CLOUD:        "gen_cloud",
-    NodeShape.NOTE:         "gen_note",
-    NodeShape.HEXAGON:      "gen_hexagon",
-    NodeShape.TERMINATOR:   "fc_terminator",
-    NodeShape.PROCESS:      "fc_process",
-    NodeShape.DECISION:     "gen_diamond",
-    NodeShape.IO_BOX:       "gen_para",
-    NodeShape.DATA_STORE:   "gen_rect",
-    NodeShape.QUANTUM_GATE: "qgate",
-    NodeShape.MEASUREMENT:  "qmeasure",
+    NodeShape.DOUBLE_RECT:   "gen_double_rect",
+    NodeShape.ACTOR:         "gen_actor",
+    NodeShape.CLOUD:         "gen_cloud",
+    NodeShape.NOTE:          "gen_note",
+    NodeShape.HEXAGON:       "gen_hexagon",
+    NodeShape.TERMINATOR:    "fc_terminator",
+    NodeShape.PROCESS:       "fc_process",
+    NodeShape.DECISION:      "gen_diamond",
+    NodeShape.IO_BOX:        "gen_para",
+    NodeShape.DATA_STORE:    "gen_rect",
+    NodeShape.QUANTUM_GATE:  "qgate",
+    NodeShape.MEASUREMENT:   "qmeasure",
 }
 
 
@@ -193,9 +193,20 @@ class TikZGenerator:
         if ir.groups:
             lines += self._group_lines(ir)
 
+        # Precompute edge frequency to separate parallel / bidirectional edges
+        pair_counts: dict[tuple[str, str], int] = {}
+        pair_indices: dict[tuple[str, str], int] = {}
+        for edge in ir.edges:
+            pair = (edge.from_node, edge.to_node)
+            pair_counts[pair] = pair_counts.get(pair, 0) + 1
+
         # Edges
         for edge in ir.edges:
-            lines += self._edge_lines(edge, ir)
+            pair = (edge.from_node, edge.to_node)
+            idx = pair_indices.get(pair, 0)
+            pair_indices[pair] = idx + 1
+            has_reverse = (edge.to_node, edge.from_node) in pair_counts
+            lines += self._edge_lines(edge, ir, edge_index=idx, total_in_pair=pair_counts[pair], has_reverse=has_reverse)
 
         lines.append(r"\end{tikzpicture}")
         lines.append(r"\end{document}")
@@ -204,7 +215,6 @@ class TikZGenerator:
     # ── Preamble ──────────────────────────────────────────────────────────────
 
     def _preamble(self, extra_libraries: list[str]) -> list[str]:
-        cfg = self.cfg
         libs = list(dict.fromkeys(
             ["positioning", "arrows.meta", "calc", "fit",
              "backgrounds", "shapes.geometric", "shapes.multipart",
@@ -227,7 +237,6 @@ class TikZGenerator:
     # ── Begin tikzpicture ────────────────────────────────────────────────────
 
     def _begin_tikzpicture(self, extra_styles: list[str]) -> list[str]:
-        cfg = self.cfg
         base_styles = [
             rf"  every node/.style={{font=\sffamily\small}},",
             # Claude-style shapes: modern rounded corners, clean stroke, generous padding
@@ -262,8 +271,10 @@ class TikZGenerator:
             rf"minimum size=0.85cm, align=center, font=\sffamily\bfseries\small}},",
             rf"  qmeasure/.style={{draw=black!75, fill=gray!12, line width=0.9pt, rounded corners=2pt, "
             rf"minimum size=0.85cm, align=center}},",
+            rf"  meter_box/.style={{draw=black!75, fill=gray!12, line width=0.9pt, rounded corners=2pt, "
+            rf"minimum size=0.85cm, align=center}},",
             rf"  edge_label/.style={{fill=white, draw=gray!35, thin, inner sep=2.5pt, "
-            rf"font=\sffamily\scriptsize, text=black!85, rounded corners=3pt}},",
+            rf"font=\sffamily\scriptsize, text=black!85, rounded corners=3pt, align=center}},",
             rf"  flow_arrow/.style={{->, line width=0.85pt, draw=black!75}},",
         ]
         extra = [f"  {s}," for s in extra_styles]
@@ -401,13 +412,24 @@ class TikZGenerator:
         lines.append(r"  \end{pgfonlayer}")
         return lines
 
-    # ── Edge lines ────────────────────────────────────────────────────────────
+    # ── Edge lines with Non-Overlap Routing ───────────────────────────────────
 
-    def _edge_lines(self, edge: IREdge, ir: DiagramIR) -> list[str]:
+    def _edge_lines(
+        self,
+        edge: IREdge,
+        ir: DiagramIR,
+        edge_index: int = 0,
+        total_in_pair: int = 1,
+        has_reverse: bool = False,
+    ) -> list[str]:
         u = _safe_id(edge.from_node)
         v = _safe_id(edge.to_node)
         if not u or not v:
             return []
+
+        node_map = {n.id: n for n in ir.nodes}
+        u_node = node_map.get(edge.from_node)
+        v_node = node_map.get(edge.to_node)
 
         arrow_spec = _edge_arrow_spec(edge)
         line_style = "dashed" if edge.style == EdgeStyle.DASHED else (
@@ -416,7 +438,7 @@ class TikZGenerator:
         double = "double" if edge.style == EdgeStyle.DOUBLE else ""
 
         # Compose draw options with smooth rounded corners
-        draw_opts_parts = [f"{arrow_spec}", "line width=0.85pt", "draw=black!75", "rounded corners=5pt"]
+        draw_opts_parts = [f"{arrow_spec}", "line width=0.85pt", "draw=black!75", "rounded corners=6pt"]
         if line_style:
             draw_opts_parts.append(line_style)
         if double:
@@ -424,63 +446,177 @@ class TikZGenerator:
         draw_opts = ", ".join(filter(None, draw_opts_parts))
 
         label_tex = escape_latex(edge.label)
-        label_node = f" node[midway, edge_label] {{{label_tex}}} " if label_tex else " "
+        pos_spec = "midway"
+        if total_in_pair > 1:
+            pos_spec = f"pos={0.35 + 0.3 * edge_index}"
+        label_node = f" node[{pos_spec}, edge_label] {{{label_tex}}} " if label_tex else " "
 
         mult_head = escape_latex(edge.multiplicity_head)
         mult_tail = escape_latex(edge.multiplicity_tail)
         mult_near_end   = f" node[near end,   edge_label] {{{mult_head}}} " if mult_head else ""
         mult_near_start = f" node[near start, edge_label] {{{mult_tail}}} " if mult_tail else ""
 
-        routing = edge.routing
-        direction = ir.direction
-        is_lr = direction == Direction.LR
-
-        node_order = {n.id: i for i, n in enumerate(ir.nodes)}
-        u_idx = node_order.get(edge.from_node, 0)
-        v_idx = node_order.get(edge.to_node, 0)
-        is_skip = abs(v_idx - u_idx) > 1
-        is_back = v_idx < u_idx
-
         edge_label_part = label_node + mult_near_start + mult_near_end
 
-        if routing == EdgeRouting.SELF_LOOP:
+        # Self loop
+        if edge.routing == EdgeRouting.SELF_LOOP or edge.from_node == edge.to_node:
             return [
                 f"  \\draw[{draw_opts}] ({u}.north east) to[out=30, in=-30, "
                 f"looseness=3]{edge_label_part}({v}.south east);"
             ]
 
-        if routing == EdgeRouting.CURVED or (is_back and routing == EdgeRouting.DIRECT):
-            bend = edge.bend_angle if edge.bend_angle else (25 if is_back else 0)
+        if not u_node or not v_node:
+            return [f"  \\draw[{draw_opts}] ({u}) --{edge_label_part}({v});"]
+
+        is_lr = ir.direction == Direction.LR
+        u_layer = getattr(u_node, "layer", 0)
+        v_layer = getattr(v_node, "layer", 0)
+
+        # Layer relationships
+        is_back = v_layer < u_layer
+        is_skip = v_layer > u_layer + 1
+        is_same_layer = v_layer == u_layer
+
+        # Explicit curved routing or bidirectional curvature separation
+        if edge.routing == EdgeRouting.CURVED or (has_reverse and total_in_pair == 1):
+            bend = edge.bend_angle if edge.bend_angle else 22
             return [
                 f"  \\draw[{draw_opts}] ({u}) to[bend left={bend}]{edge_label_part}({v});"
             ]
 
-        if routing in (EdgeRouting.ORTHOGONAL_UP,) or (is_skip and not is_back):
-            return [
-                f"  \\draw[{draw_opts}] ({u}.north) -- ++(0,0.9cm) "
-                f"-|{edge_label_part}({v}.north);"
-            ]
-
-        if routing == EdgeRouting.ORTHOGONAL_DOWN or (is_skip and is_back):
-            return [
-                f"  \\draw[{draw_opts}] ({u}.south) -- ++(0,-0.9cm) "
-                f"-|{edge_label_part}({v}.south);"
-            ]
-
-        if routing == EdgeRouting.ORTHOGONAL:
-            if is_lr:
+        # Parallel multiple edges between the same pair
+        if total_in_pair > 1:
+            bends = [0, 24, -24, 38, -38]
+            bend = bends[edge_index % len(bends)]
+            if bend != 0:
+                bend_str = f"bend left={bend}" if bend > 0 else f"bend right={abs(bend)}"
                 return [
-                    f"  \\draw[{draw_opts}] ({u}.east) -|{edge_label_part}({v}.north);"
+                    f"  \\draw[{draw_opts}] ({u}) to[{bend_str}]{edge_label_part}({v});"
+                ]
+
+        # Intra-layer edges (nodes in the same column/row)
+        if is_same_layer:
+            if is_lr:
+                # Vertical stack in LR
+                if u_node.geometry.y >= v_node.geometry.y:
+                    return [f"  \\draw[{draw_opts}] ({u}.south) --{edge_label_part}({v}.north);"]
+                else:
+                    return [f"  \\draw[{draw_opts}] ({u}.north) --{edge_label_part}({v}.south);"]
+            else:
+                # Horizontal stack in TB
+                if u_node.geometry.x <= v_node.geometry.x:
+                    return [f"  \\draw[{draw_opts}] ({u}.east) --{edge_label_part}({v}.west);"]
+                else:
+                    return [f"  \\draw[{draw_opts}] ({u}.west) --{edge_label_part}({v}.east);"]
+
+        # Forward skip edges: route along the corridor clear of intermediate nodes and groups
+        if is_skip or edge.routing == EdgeRouting.ORTHOGONAL_UP:
+            if is_lr:
+                min_x = min(u_node.geometry.x, v_node.geometry.x)
+                max_x = max(u_node.geometry.x, v_node.geometry.x)
+                intervening = [
+                    n for n in ir.nodes
+                    if min_x + 0.2 < n.geometry.x < max_x - 0.2
+                ]
+                top_y = max(
+                    (n.geometry.y + n.geometry.height / 2.0 for n in intervening),
+                    default=max(u_node.geometry.y + u_node.geometry.height / 2.0, v_node.geometry.y + v_node.geometry.height / 2.0)
+                )
+                for g in ir.groups:
+                    if min_x < g.geometry.x + g.geometry.width and g.geometry.x < max_x:
+                        top_y = max(top_y, g.geometry.y + g.geometry.height)
+
+                u_top = u_node.geometry.y + u_node.geometry.height / 2.0
+                detour = max(0.9, round(top_y - u_top + 0.9, 2))
+                return [
+                    f"  \\draw[{draw_opts}] ({u}.north) -- ++(0, {detour:.2f}cm) "
+                    f"-|{edge_label_part}({v}.north);"
                 ]
             else:
+                min_y = min(u_node.geometry.y, v_node.geometry.y)
+                max_y = max(u_node.geometry.y, v_node.geometry.y)
+                intervening = [
+                    n for n in ir.nodes
+                    if min_y + 0.2 < n.geometry.y < max_y - 0.2
+                ]
+                right_x = max(
+                    (n.geometry.x + n.geometry.width / 2.0 for n in intervening),
+                    default=max(u_node.geometry.x + u_node.geometry.width / 2.0, v_node.geometry.x + v_node.geometry.width / 2.0)
+                )
+                for g in ir.groups:
+                    if min_y < g.geometry.y + g.geometry.height and g.geometry.y < max_y:
+                        right_x = max(right_x, g.geometry.x + g.geometry.width)
+
+                u_right = u_node.geometry.x + u_node.geometry.width / 2.0
+                detour = max(0.9, round(right_x - u_right + 0.9, 2))
                 return [
-                    f"  \\draw[{draw_opts}] ({u}.south) |-{edge_label_part}({v}.west);"
+                    f"  \\draw[{draw_opts}] ({u}.east) -- ++({detour:.2f}cm, 0) "
+                    f"|-{edge_label_part}({v}.east);"
                 ]
 
-        # Default: direct
+        # Backward / feedback edges: route along bottom or outer channel
+        if is_back or edge.routing == EdgeRouting.ORTHOGONAL_DOWN:
+            if is_lr:
+                min_x = min(u_node.geometry.x, v_node.geometry.x)
+                max_x = max(u_node.geometry.x, v_node.geometry.x)
+                intervening = [
+                    n for n in ir.nodes
+                    if min_x - 0.2 < n.geometry.x < max_x + 0.2
+                ]
+                bottom_y = min(
+                    (n.geometry.y - n.geometry.height / 2.0 for n in intervening),
+                    default=min(u_node.geometry.y - u_node.geometry.height / 2.0, v_node.geometry.y - v_node.geometry.height / 2.0)
+                )
+                for g in ir.groups:
+                    if min_x < g.geometry.x + g.geometry.width and g.geometry.x < max_x:
+                        bottom_y = min(bottom_y, g.geometry.y)
+
+                u_bottom = u_node.geometry.y - u_node.geometry.height / 2.0
+                detour = max(0.9, round(u_bottom - bottom_y + 0.9, 2))
+                return [
+                    f"  \\draw[{draw_opts}] ({u}.south) -- ++(0, -{detour:.2f}cm) "
+                    f"-|{edge_label_part}({v}.south);"
+                ]
+            else:
+                min_y = min(u_node.geometry.y, v_node.geometry.y)
+                max_y = max(u_node.geometry.y, v_node.geometry.y)
+                intervening = [
+                    n for n in ir.nodes
+                    if min_y - 0.2 < n.geometry.y < max_y + 0.2
+                ]
+                left_x = min(
+                    (n.geometry.x - n.geometry.width / 2.0 for n in intervening),
+                    default=min(u_node.geometry.x - u_node.geometry.width / 2.0, v_node.geometry.x - v_node.geometry.width / 2.0)
+                )
+                for g in ir.groups:
+                    if min_y < g.geometry.y + g.geometry.height and g.geometry.y < max_y:
+                        left_x = min(left_x, g.geometry.x)
+
+                u_left = u_node.geometry.x - u_node.geometry.width / 2.0
+                detour = max(0.9, round(u_left - left_x + 0.9, 2))
+                return [
+                    f"  \\draw[{draw_opts}] ({u}.west) -- ++(-{detour:.2f}cm, 0) "
+                    f"|-{edge_label_part}({v}.west);"
+                ]
+
+        # Adjacent forward edge (v_layer == u_layer + 1)
         if is_lr:
+            dy = abs(u_node.geometry.y - v_node.geometry.y)
+            if dy >= 0.5:
+                # Clean midway orthogonal step
+                step_x = max(0.8, round((v_node.geometry.x - v_node.geometry.width / 2.0 - (u_node.geometry.x + u_node.geometry.width / 2.0)) / 2.0, 2))
+                return [
+                    f"  \\draw[{draw_opts}] ({u}.east) -- ++({step_x:.2f}cm, 0) |-{edge_label_part}({v}.west);"
+                ]
             return [f"  \\draw[{draw_opts}] ({u}.east) --{edge_label_part}({v}.west);"]
         else:
+            dx = abs(u_node.geometry.x - v_node.geometry.x)
+            if dx >= 0.5:
+                # Clean midway orthogonal step
+                step_y = max(0.8, round(((u_node.geometry.y - u_node.geometry.height / 2.0) - (v_node.geometry.y + v_node.geometry.height / 2.0)) / 2.0, 2))
+                return [
+                    f"  \\draw[{draw_opts}] ({u}.south) -- ++(0, -{step_y:.2f}cm) -|{edge_label_part}({v}.north);"
+                ]
             return [f"  \\draw[{draw_opts}] ({u}.south) --{edge_label_part}({v}.north);"]
 
     # ── Dedicated IBM Qiskit Quantum Circuit Generator ───────────────────────
@@ -514,7 +650,8 @@ class TikZGenerator:
             r"  qgate_generic/.style={draw=blue!80!black, fill=blue!18, line width=0.9pt, rounded corners=2pt, minimum size=0.85cm, align=center, font=\sffamily\bfseries\small},",
             r"  qcontrol/.style={circle, fill=black!85, inner sep=2.5pt},",
             r"  qtarget/.style={circle, draw=black!85, line width=1.0pt, inner sep=4.2pt},",
-            r"  meter_box/.style={draw=black!75, fill=gray!12, line width=0.9pt, rounded corners=2pt, minimum size=0.85cm},",
+            r"  qmeasure/.style={draw=black!75, fill=gray!12, line width=0.9pt, rounded corners=2pt, minimum size=0.85cm, align=center},",
+            r"  meter_box/.style={draw=black!75, fill=gray!12, line width=0.9pt, rounded corners=2pt, minimum size=0.85cm, align=center},",
             r"]",
         ]
 
@@ -530,7 +667,7 @@ class TikZGenerator:
             lines.append(f"  \\node[left, font=\\sffamily\\small] at (-0.8, {y_q:.2f}) {{$q_{q} : |0\\rangle$}};")
 
         # 2. Classical register wire if measurements exist
-        y_c = -num_qubits * wire_y_spacing - 0.2
+        y_c = -num_qubits * wire_y_spacing - 0.4
         if has_measurement:
             lines.append(f"  \\draw[cwire] (-0.8, {y_c:.2f}) -- ({circuit_end_x:.2f}, {y_c:.2f});")
             lines.append(f"  \\node[left, font=\\sffamily\\small] at (-0.8, {y_c:.2f}) {{$c$}};")
@@ -585,7 +722,7 @@ class TikZGenerator:
             # Measurement gate
             if node.shape == NodeShape.MEASUREMENT or "measure" in lbl_lower:
                 lines.append(f"  % Measurement: {node.id} on q{q}")
-                lines.append(f"  \\node[meter_box] ({nid}) at ({x:.3f}, {y:.3f}) {{}};")
+                lines.append(f"  \\node[qmeasure] ({nid}) at ({x:.3f}, {y:.3f}) {{}};")
                 lines.append(f"  \\draw[line width=0.8pt, draw=black!80] ({x:.3f}-0.22, {y:.3f}-0.12) arc (160:20:0.24);")
                 lines.append(f"  \\draw[-{{Latex[scale=0.7]}}, line width=0.8pt, draw=black!80] ({x:.3f}-0.05, {y:.3f}-0.12) -- ({x:.3f}+0.18, {y:.3f}+0.16);")
                 if has_measurement:
