@@ -4,16 +4,6 @@
   "outputDirectory": "frontend/.next",
   "framework": "nextjs",
   "installCommand": "cd frontend && npm install",
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "BACKEND_WORKER_URL/api/:path*"
-    }
-  ],
-  "env": {
-    "NEXT_PUBLIC_BACKEND_URL": "@backend_url",
-    "NEXT_PUBLIC_ACCESS_TOKEN": "@access_token"
-  },
   "headers": [
     {
       "source": "/api/(.*)",
