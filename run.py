@@ -14,8 +14,10 @@ import sys
 import time
 import shutil
 import signal
+import socket
 import threading
 import subprocess
+import webbrowser
 from pathlib import Path
 
 # Root directory of the repository
@@ -113,6 +115,28 @@ def terminate_process_tree(proc: subprocess.Popen | None) -> None:
             proc.kill()
         except Exception:
             pass
+
+
+def open_browser_when_ready(host: str, port: int, url: str, stop_event: threading.Event) -> None:
+    """Waits for the frontend web server to be reachable, then opens the system's default browser."""
+    # Poll until port is responding
+    for _ in range(40):
+        if stop_event.is_set():
+            return
+        time.sleep(0.5)
+        try:
+            with socket.create_connection((host, port), timeout=0.8):
+                break
+        except Exception:
+            continue
+
+    if not stop_event.is_set():
+        time.sleep(0.5)
+        print(f"\n{GREEN}{BOLD}>>> Opening {url} in your default web browser...{RESET}\n")
+        try:
+            webbrowser.open(url)
+        except Exception as exc:
+            print(f"{YELLOW}Could not open browser automatically: {exc}{RESET}")
 
 
 def main() -> None:
@@ -218,6 +242,14 @@ def main() -> None:
         )
         t_backend.start()
         t_frontend.start()
+
+        # Automatically open http://localhost:3000 in the external web browser
+        t_browser = threading.Thread(
+            target=open_browser_when_ready,
+            args=("localhost", 3000, "http://localhost:3000", stop_event),
+            daemon=True,
+        )
+        t_browser.start()
 
         # Monitor loop
         while not stop_event.is_set():
